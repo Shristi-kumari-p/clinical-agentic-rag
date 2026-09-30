@@ -1,0 +1,21 @@
+# Environments
+.venv/
+env/
+venv/
+
+# Python Cache & Testing
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Environment Variables & Secrets
+.env
+.streamlit/secrets.toml
+
+# Local Vector Databases & Processed Data
+data/
+chroma_db/
+qdrant_db/
+*.json
+*.jsonl
