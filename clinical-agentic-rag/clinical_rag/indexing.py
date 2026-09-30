@@ -7,9 +7,10 @@ import uuid
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
+from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from . import config
+
 
 def get_qdrant_client() -> QdrantClient:
     """Initializes and returns the Qdrant client connection."""
@@ -19,11 +20,11 @@ def get_qdrant_client() -> QdrantClient:
     return QdrantClient(path=str(config.ROOT_DIR / "qdrant_db"))
 
 
-def ensure_collection(client: QdrantClient, reset: bool = False) -> None:
-    """Creates the Qdrant collection if it doesn't exist, or recreates it if reset=True."""
+def ensure_collection(client: QdrantClient, reset: bool = False, resume: bool = False) -> None:
+    """Creates the Qdrant collection if it doesn't exist, or recreates it if reset=True (and not resuming)."""
     collections = [c.name for c in client.get_collections().collections]
     
-    if reset and config.QDRANT_COLLECTION in collections:
+    if reset and not resume and config.QDRANT_COLLECTION in collections:
         print(f"Resetting collection: {config.QDRANT_COLLECTION}")
         client.delete_collection(collection_name=config.QDRANT_COLLECTION)
         collections.remove(config.QDRANT_COLLECTION)
@@ -39,14 +40,23 @@ def ensure_collection(client: QdrantClient, reset: bool = False) -> None:
         )
 
 
-def build_index(chunks: List[Dict[str, Any]], reset: bool = False) -> None:
+def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool = False) -> None:
     """Embeds document chunks and upserts them into Qdrant in batches."""
     if not chunks:
         print("No chunks provided to index.")
         return
 
     client = get_qdrant_client()
-    ensure_collection(client, reset=reset)
+    ensure_collection(client, reset=reset, resume=resume)
+
+    # Check already indexed point count for resume support
+    existing_count = 0
+    if resume:
+        try:
+            existing_count = client.get_collection(collection_name=config.QDRANT_COLLECTION).points_count
+            print(f"Resuming indexing. Found {existing_count} existing points in collection.")
+        except Exception:
+            existing_count = 0
 
     print(f"Loading embedding model: {config.EMBEDDING_MODEL}...")
     model = SentenceTransformer(config.EMBEDDING_MODEL)
@@ -55,6 +65,10 @@ def build_index(chunks: List[Dict[str, Any]], reset: bool = False) -> None:
     batch_size = config.UPLOAD_BATCH_SIZE
 
     for i in range(0, len(chunks), batch_size):
+        # Skip previously processed batches if resuming
+        if resume and (i + batch_size <= existing_count):
+            continue
+
         batch = chunks[i : i + batch_size]
         texts = [c["text"] for c in batch]
         
@@ -64,7 +78,6 @@ def build_index(chunks: List[Dict[str, Any]], reset: bool = False) -> None:
         # Build Qdrant points
         points = []
         for idx, (chunk, embedding) in enumerate(zip(batch, embeddings)):
-            # Generate deterministic point ID using source and doc_id
             point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{chunk['document_id']}_{chunk['chunk_id']}"))
             
             payload = {
