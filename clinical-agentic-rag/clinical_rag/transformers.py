@@ -6,13 +6,9 @@ from . import config
 
 
 def _parse_item(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
-    """Ensures input items are parsed into dictionaries even if loaded as raw JSON strings."""
     if isinstance(item, str):
         try:
             item = json.loads(item)
-            # Handle edge case where json.loads returns another string (double-encoded JSON)
-            if isinstance(item, str):
-                item = json.loads(item)
         except (json.JSONDecodeError, TypeError):
             return {}
     return item if isinstance(item, dict) else {}
@@ -20,21 +16,24 @@ def _parse_item(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
 
 def transform_clinical_trial(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
     item = _parse_item(item)
-    protocol = item.get("protocolSection", {})
-    ident = protocol.get("identificationModule", {})
-    nct_id = ident.get("nctId", "unknown")
-    title = ident.get("briefTitle", "No title available")
+    
+    # Read flattened column names created by ingest.py
+    nct_id = item.get("NCT_ID") or item.get("nctId", "unknown")
+    title = item.get("Title") or item.get("briefTitle", "No title available")
+    conditions = item.get("Conditions") or []
+    interventions = item.get("Interventions") or []
+    summary = item.get("Summary") or ""
 
-    conditions = protocol.get("conditionsModule", {}).get("conditions", [])
-    interventions_list = protocol.get("armsInterventionsModule", {}).get("interventions", [])
-    interventions = [i.get("name") for i in interventions_list if isinstance(i, dict) and i.get("name")]
-    description = protocol.get("descriptionModule", {}).get("briefSummary", "")
+    if isinstance(conditions, str):
+        conditions = [conditions]
+    if isinstance(interventions, str):
+        interventions = [interventions]
 
     narrative_parts = [
         f"Title: {title}",
         f"Conditions: {', '.join(conditions)}" if conditions else "",
         f"Interventions: {', '.join(interventions)}" if interventions else "",
-        f"Summary: {description}"
+        f"Summary: {summary}"
     ]
 
     return {
@@ -51,22 +50,23 @@ def transform_clinical_trial(item: Union[Dict[str, Any], str]) -> Dict[str, Any]
     }
 
 
-def transform_fda_event(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+def transform_fda_event(item: Union[Dict[str, Any], str], idx: int = 0) -> Dict[str, Any]:
     item = _parse_item(item)
-    safety_id = item.get("safetyreportid", "unknown")
     patient = item.get("patient", {})
 
-    drug_list = patient.get("drug", []) if isinstance(patient, dict) else []
-    reaction_list = patient.get("reaction", []) if isinstance(patient, dict) else []
+    safety_id = item.get("safetyreportid") or item.get("safety_report_id") or f"report_{idx}"
 
-    drugs = [d.get("medicinalproduct") for d in drug_list if isinstance(d, dict) and d.get("medicinalproduct")]
-    reactions = [r.get("reactionmeddrapt") for r in reaction_list if isinstance(r, dict) and r.get("reactionmeddrapt")]
+    drug_list = patient.get("drug", []) if isinstance(patient, dict) else item.get("drug", [])
+    reaction_list = patient.get("reaction", []) if isinstance(patient, dict) else item.get("reaction", [])
+
+    drugs = [d.get("medicinalproduct") for d in drug_list if isinstance(d, dict) and d.get("medicinalproduct")] if isinstance(drug_list, list) else []
+    reactions = [r.get("reactionmeddrapt") for r in reaction_list if isinstance(r, dict) and r.get("reactionmeddrapt")] if isinstance(reaction_list, list) else []
 
     title = f"FDA Adverse Event Report {safety_id}"
     narrative_parts = [
         f"Report ID: {safety_id}",
-        f"Suspect Drugs: {', '.join(drugs)}" if drugs else "",
-        f"Reported Adverse Reactions: {', '.join(reactions)}" if reactions else "",
+        f"Suspect Drugs: {', '.join(drugs)}" if drugs else "Suspect Drugs: Unspecified",
+        f"Reported Adverse Reactions: {', '.join(reactions)}" if reactions else "Reactions: Unspecified",
     ]
 
     return {
@@ -85,15 +85,17 @@ def transform_fda_event(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
 
 def transform_pubmed_article(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
     item = _parse_item(item)
-    pmid = item.get("pmid", "unknown")
-    title = item.get("title", "No Title")
-    abstract = item.get("abstract", "")
-    journal = item.get("journal", "")
-    pub_date = item.get("pub_date", "")
+    
+    # Read flattened PubMed column names created by ingest.py
+    pmid = item.get("PMID") or item.get("pmid", "unknown")
+    title = item.get("Title") or item.get("title", "No Title")
+    abstract = item.get("Abstract") or item.get("abstract", "")
+    journal = item.get("Journal") or item.get("journal", "")
+    pub_year = item.get("Publication_Year") or item.get("pub_date", "")
 
     narrative_parts = [
         f"Title: {title}",
-        f"Journal: {journal} ({pub_date})" if journal else "",
+        f"Journal: {journal} ({pub_year})" if journal else "",
         f"Abstract: {abstract}"
     ]
 
@@ -105,7 +107,7 @@ def transform_pubmed_article(item: Union[Dict[str, Any], str]) -> Dict[str, Any]
         "metadata": {
             "pmid": pmid,
             "journal": journal,
-            "pub_date": pub_date,
+            "pub_date": str(pub_year),
             "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
         }
     }

@@ -33,11 +33,19 @@ def save_frame(df: pd.DataFrame, name: str) -> None:
     df.to_csv(config.RAW_DIR / f"{name}.csv", index=False)
 
 
-def load_frame(name: str) -> pd.DataFrame:
-    path = config.RAW_DIR / f"{name}.jsonl"
-    if not path.exists():
-        raise FileNotFoundError(f"{path} not found - run `python main.py ingest` first.")
-    return pd.read_json(path, orient="records", lines=True, dtype=False, convert_dates=False)
+def load_frame(name: str) -> list[dict]:
+    path_jsonl = config.RAW_DIR / f"{name}.jsonl"
+    path_json = config.RAW_DIR / f"{name}.json"
+
+    if path_jsonl.exists():
+        df = pd.read_json(path_jsonl, orient="records", lines=True)
+        return df.to_dict(orient="records")
+    elif path_json.exists():
+        with open(path_json, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("results", data) if isinstance(data, dict) else data
+    else:
+        raise FileNotFoundError(f"Data file for '{name}' not found in {config.RAW_DIR}.")
 
 
 # ---------------------------------------------------------------- ClinicalTrials.gov
