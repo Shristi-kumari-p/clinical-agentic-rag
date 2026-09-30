@@ -1,9 +1,25 @@
 """clinical_rag/transformers.py"""
 
-from typing import Dict, Any
+import json
+from typing import Dict, Any, Union
 from . import config
 
-def transform_clinical_trial(item: Dict[str, Any]) -> Dict[str, Any]:
+
+def _parse_item(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+    """Ensures input items are parsed into dictionaries even if loaded as raw JSON strings."""
+    if isinstance(item, str):
+        try:
+            item = json.loads(item)
+            # Handle edge case where json.loads returns another string (double-encoded JSON)
+            if isinstance(item, str):
+                item = json.loads(item)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return item if isinstance(item, dict) else {}
+
+
+def transform_clinical_trial(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+    item = _parse_item(item)
     protocol = item.get("protocolSection", {})
     ident = protocol.get("identificationModule", {})
     nct_id = ident.get("nctId", "unknown")
@@ -11,7 +27,7 @@ def transform_clinical_trial(item: Dict[str, Any]) -> Dict[str, Any]:
 
     conditions = protocol.get("conditionsModule", {}).get("conditions", [])
     interventions_list = protocol.get("armsInterventionsModule", {}).get("interventions", [])
-    interventions = [i.get("name") for i in interventions_list if i.get("name")]
+    interventions = [i.get("name") for i in interventions_list if isinstance(i, dict) and i.get("name")]
     description = protocol.get("descriptionModule", {}).get("briefSummary", "")
 
     narrative_parts = [
@@ -34,12 +50,17 @@ def transform_clinical_trial(item: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
 
-def transform_fda_event(item: Dict[str, Any]) -> Dict[str, Any]:
+
+def transform_fda_event(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+    item = _parse_item(item)
     safety_id = item.get("safetyreportid", "unknown")
     patient = item.get("patient", {})
 
-    drugs = [d.get("medicinalproduct") for d in patient.get("drug", []) if d.get("medicinalproduct")]
-    reactions = [r.get("reactionmeddrapt") for r in patient.get("reaction", []) if r.get("reactionmeddrapt")]
+    drug_list = patient.get("drug", []) if isinstance(patient, dict) else []
+    reaction_list = patient.get("reaction", []) if isinstance(patient, dict) else []
+
+    drugs = [d.get("medicinalproduct") for d in drug_list if isinstance(d, dict) and d.get("medicinalproduct")]
+    reactions = [r.get("reactionmeddrapt") for r in reaction_list if isinstance(r, dict) and r.get("reactionmeddrapt")]
 
     title = f"FDA Adverse Event Report {safety_id}"
     narrative_parts = [
@@ -61,7 +82,9 @@ def transform_fda_event(item: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
 
-def transform_pubmed_article(item: Dict[str, Any]) -> Dict[str, Any]:
+
+def transform_pubmed_article(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+    item = _parse_item(item)
     pmid = item.get("pmid", "unknown")
     title = item.get("title", "No Title")
     abstract = item.get("abstract", "")
