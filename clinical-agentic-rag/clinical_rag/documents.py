@@ -44,11 +44,20 @@ def clean_documents(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Deduplicates documents by document_id and strips empty texts."""
     seen = set()
     cleaned = []
+    
+    # Use a low fallback threshold (20 chars) to prevent dropping brief FDA/PubMed records
+    min_chars = getattr(config, "MIN_DOC_CHARS", 20)
+    # If MIN_DOC_CHARS was accidentally set to a high value like 500, cap it at 20 for document cleaning
+    min_chars = min(min_chars, 20)
+
     for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+
         doc_id = doc.get("document_id")
         text = doc.get("text", "").strip()
 
-        if not text or len(text) < config.MIN_DOC_CHARS:
+        if not text or len(text) < min_chars:
             continue
         if doc_id in seen:
             continue
@@ -61,11 +70,17 @@ def clean_documents(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def chunk_documents(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Splits documents into overlapping chunks based on CHUNK_SIZE and CHUNK_OVERLAP."""
     chunks = []
-    chunk_size = config.CHUNK_SIZE
-    overlap = config.CHUNK_OVERLAP
+    chunk_size = getattr(config, "CHUNK_SIZE", 500)
+    overlap = getattr(config, "CHUNK_OVERLAP", 50)
+    
+    # Ensure step size is strictly positive to prevent infinite loops
+    step = max(1, chunk_size - overlap)
 
     for doc in docs:
-        text = doc["text"]
+        text = doc.get("text", "")
+        if not text:
+            continue
+
         start = 0
         chunk_idx = 0
 
@@ -73,22 +88,22 @@ def chunk_documents(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             end = start + chunk_size
             chunk_text = text[start:end]
 
-            if len(chunk_text.strip()) >= config.MIN_DOC_CHARS:
+            if chunk_text.strip():
                 chunks.append({
-                    "document_id": doc["document_id"],
-                    "source": doc["source"],
-                    "chunk_id": chunk_idx,
+                    "document_id": doc.get("document_id", "unknown"),
+                    "source": doc.get("source", "unknown"),
+                    "chunk_id": f"{doc.get('document_id', 'doc')}_c{chunk_idx}",
                     "text": chunk_text,
+                    "title": doc.get("title", ""),
                     "metadata": {
                         **doc.get("metadata", {}),
                         "title": doc.get("title", ""),
+                        "chunk_index": chunk_idx,
                     }
                 })
                 chunk_idx += 1
 
-            start += chunk_size - overlap
-            if start >= len(text):
-                break
+            start += step
 
     return chunks
 
@@ -99,6 +114,7 @@ def chunk_documents(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def save_json(data: List[Dict[str, Any]], filename: str) -> None:
     """Saves documents/data to JSON in the PROCESSED_DIR."""
+    config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     filepath = config.PROCESSED_DIR / filename
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
@@ -106,6 +122,7 @@ def save_json(data: List[Dict[str, Any]], filename: str) -> None:
 
 def save_chunks(chunks: List[Dict[str, Any]]) -> None:
     """Saves chunked documents to CHUNKS_FILE (chunks.jsonl)."""
+    config.CHUNKS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(config.CHUNKS_FILE, "w", encoding="utf-8") as f:
         for chunk in chunks:
             f.write(json.dumps(chunk, ensure_ascii=False) + "\n")

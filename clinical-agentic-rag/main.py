@@ -50,10 +50,24 @@ def cmd_build_docs(_args):
     print("After cleaning / de-duplication:", dict(d.count_by_source(docs)))
     d.save_json(docs, "cleaned_clinical_documents.json")
 
-    chunks = d.chunk_documents(docs)
-    print(f"Chunks: {len(chunks)}", dict(d.count_by_source(chunks)))
-    d.save_chunks(chunks)
+    if not docs:
+        print("Warning: No documents remained after cleaning! Check clean_documents logic.")
+        return
 
+    # Check which function name documents.py exposes for chunking
+    chunk_fn = getattr(d, "chunk_documents", getattr(d, "chunk_all_documents", None))
+    save_fn = getattr(d, "save_chunks", getattr(d, "save_chunks_to_file", None))
+
+    if chunk_fn is None:
+        raise AttributeError("clinical_rag.documents has no function for chunking documents.")
+
+    chunks = chunk_fn(docs)
+    print(f"Chunks created: {len(chunks)}", dict(d.count_by_source(chunks)))
+
+    if save_fn:
+        save_fn(chunks)
+    else:
+        d.save_json(chunks, "chunks.jsonl")
 
 def cmd_index(args):
     from clinical_rag.documents import load_chunks
