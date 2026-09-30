@@ -17,17 +17,34 @@ def _parse_item(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
 def transform_clinical_trial(item: Union[Dict[str, Any], str]) -> Dict[str, Any]:
     item = _parse_item(item)
     
-    # Read flattened column names created by ingest.py
     nct_id = item.get("NCT_ID") or item.get("nctId", "unknown")
     title = item.get("Title") or item.get("briefTitle", "No title available")
-    conditions = item.get("Conditions") or []
-    interventions = item.get("Interventions") or []
+    
+    raw_conditions = item.get("Conditions") or []
+    raw_interventions = item.get("Interventions") or []
     summary = item.get("Summary") or ""
 
-    if isinstance(conditions, str):
-        conditions = [conditions]
-    if isinstance(interventions, str):
-        interventions = [interventions]
+    # Ensure conditions is a list of strings
+    if isinstance(raw_conditions, str):
+        conditions = [raw_conditions]
+    elif isinstance(raw_conditions, list):
+        conditions = [
+            c if isinstance(c, str) else str(c.get("name", c))
+            for c in raw_conditions if c
+        ]
+    else:
+        conditions = []
+
+    # Ensure interventions is a list of strings (extract 'name' if dict)
+    if isinstance(raw_interventions, str):
+        interventions = [raw_interventions]
+    elif isinstance(raw_interventions, list):
+        interventions = [
+            i if isinstance(i, str) else str(i.get("name", i))
+            for i in raw_interventions if i
+        ]
+    else:
+        interventions = []
 
     narrative_parts = [
         f"Title: {title}",
