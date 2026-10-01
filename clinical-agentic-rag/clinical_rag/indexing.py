@@ -1,6 +1,6 @@
 """clinical_rag/indexing.py
 
-Handles embedding document chunks and indexing them into Qdrant Vector Database.
+Handles embedding document chunks, query vector encoding, and indexing them into Qdrant Vector Database.
 """
 
 import uuid
@@ -18,6 +18,13 @@ def get_qdrant_client() -> QdrantClient:
         return QdrantClient(url=config.QDRANT_URL, api_key=config.QDRANT_API_KEY)
     # Default to local persistent/in-memory instance if no URL is provided
     return QdrantClient(path=str(config.ROOT_DIR / "qdrant_db"))
+
+
+def embed_query(query: str) -> List[float]:
+    """Embeds a single query string using the SentenceTransformer model."""
+    model = SentenceTransformer(config.EMBEDDING_MODEL)
+    embedding = model.encode(query, show_progress_bar=False)
+    return embedding.tolist()
 
 
 def ensure_collection(client: QdrantClient, reset: bool = False, resume: bool = False) -> None:
