@@ -20,7 +20,7 @@ from clinical_rag.generation import generate_answer
 
 # Page configuration
 st.set_page_config(
-    page_title="Clinical Agentic RAG By Shristi",
+    page_title="Clinical Agentic RAG",
     page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -34,7 +34,7 @@ st.markdown("""
         background: linear-gradient(135deg, #0F172A 0%, #1E3A8A 50%, #0284C7 100%);
         padding: 2.5rem 2rem;
         border-radius: 16px;
-        color: white;
+        color: #FFFFFF !important;
         margin-bottom: 2rem;
         box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.3);
         position: relative;
@@ -47,17 +47,16 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 12px;
-        color: #FFFFFF;
+        color: #FFFFFF !important;
     }
     .banner-subtitle {
         font-size: 1.05rem;
-        color: #93C5FD;
+        color: #93C5FD !important;
         font-weight: 400;
         margin-bottom: 0;
     }
 
     /* 2. CUSTOM BULLET POINTS IN CHAT & ANSWERS */
-    /* Target unordered lists inside assistant chat responses */
     [data-testid="stChatMessage"] ul {
         list-style: none !important;
         padding-left: 0 !important;
@@ -69,13 +68,13 @@ st.markdown("""
         padding-left: 2rem !important;
         margin-bottom: 0.75rem !important;
         line-height: 1.6;
-        background: #F8FAFC;
+        background: #F8FAFC !important;
+        color: #0F172A !important; /* Force dark text color */
         border: 1px solid #E2E8F0;
         padding: 0.6rem 1rem 0.6rem 2.4rem !important;
         border-radius: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    /* Custom icon for bullet points */
     [data-testid="stChatMessage"] ul li::before {
         content: "🔹";
         position: absolute;
@@ -97,31 +96,48 @@ st.markdown("""
         margin-bottom: 10px;
     }
     .badge-clinical {
-        background-color: #E0F2FE;
-        color: #0369A1;
+        background-color: #E0F2FE !important;
+        color: #0369A1 !important;
         border: 1px solid #BAE6FD;
     }
     .badge-fda {
-        background-color: #FFE4E6;
-        color: #BE123C;
+        background-color: #FFE4E6 !important;
+        color: #BE123C !important;
         border: 1px solid #FECDD3;
     }
     .badge-pubmed {
-        background-color: #D1FAE5;
-        color: #047857;
+        background-color: #D1FAE5 !important;
+        color: #047857 !important;
         border: 1px solid #A7F3D0;
     }
 
-    /* 4. RETRIEVED EVIDENCE CARDS */
+    /* 4. RETRIEVED EVIDENCE CARDS & HEADINGS */
     .evidence-card {
-        background-color: #F8FAFC;
+        background-color: #FFFFFF !important;
+        color: #0F172A !important; /* Set text color to dark slate */
         border-left: 4px solid #2563EB;
         padding: 14px 18px;
         border-radius: 8px;
         margin-bottom: 14px;
-        border-top: 1px solid #F1F5F9;
-        border-right: 1px solid #F1F5F9;
-        border-bottom: 1px solid #F1F5F9;
+        border-top: 1px solid #E2E8F0;
+        border-right: 1px solid #E2E8F0;
+        border-bottom: 1px solid #E2E8F0;
+    }
+    .evidence-card strong, 
+    .evidence-card small, 
+    .evidence-card p {
+        color: #0F172A !important; /* Ensure paragraph & inline tags stay dark */
+    }
+    .evidence-card code {
+        color: #1E40AF !important;
+        background-color: #EFF6FF !important;
+    }
+
+    /* 5. EXPANDEE & HEADINGS COLOR OVERRIDE */
+    div[data-testid="stExpander"] h3,
+    div[data-testid="stExpander"] p,
+    div[data-testid="stExpander"] span {
+        color: #0F172A !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -132,7 +148,7 @@ st.markdown("""
 st.markdown("""
 <div class="banner-container">
     <div class="banner-title">
-        <span>🩺</span> Clinical Agentic RAG System
+        <span>🩺</span> Clinical Trial Evidence Synthesis Assistant
     </div>
     <div class="banner-subtitle">
         ⚡ Multi-agent evidence retrieval across <strong>PubMed</strong> 📚, <strong>FDA Alerts</strong> 🚨, and <strong>ClinicalTrials.gov</strong> 🧪
