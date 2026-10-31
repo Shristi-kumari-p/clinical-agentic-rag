@@ -1,25 +1,10 @@
-# Web Framework
 streamlit>=1.30.0
-
-# Base & Utilities
 requests>=2.31.0
-pandas>=2.0.0
+pandas<2.2.0
 python-dotenv>=1.0.0
-
-# Vector Database
+pyarrow<24.0.0
 qdrant-client>=1.7.0
-
-# LangChain Ecosystem
 langchain-core>=0.2.0
 langchain-text-splitters>=0.2.0
 langchain-huggingface>=0.0.3
-
-# Hugging Face Models
-sentence-transformers>=2.6.0
 huggingface_hub>=0.22.0
-
-# PyTorch (CPU-only build to speed up Streamlit Cloud deployment)
-torch --extra-index-url https://download.pytorch.org/whl/cpu
-
-# Testing
-pytest>=8.0.0
