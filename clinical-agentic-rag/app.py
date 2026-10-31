@@ -133,7 +133,7 @@ st.markdown("""
         background-color: #EFF6FF !important;
     }
 
-    /* 5. EXPANDEE & HEADINGS COLOR OVERRIDE */
+    /* 5. EXPANDER & HEADINGS COLOR OVERRIDE */
     div[data-testid="stExpander"] h3,
     div[data-testid="stExpander"] p,
     div[data-testid="stExpander"] span {
@@ -141,6 +141,25 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# -----------------------------------------------------------------------------
+# SIDEBAR SYSTEM DIAGNOSTIC
+# -----------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("### ⚙️ System Status")
+    try:
+        from clinical_rag.indexing import get_qdrant_client
+        test_client = get_qdrant_client()
+        test_client.get_collections()
+        st.success("✅ Qdrant Connected")
+    except Exception as e:
+        st.error(f"❌ Qdrant Error: {e}")
+    
+    st.markdown("---")
+    st.markdown("**Knowledge Bases:**")
+    st.markdown("- 📚 PubMed Literature")
+    st.markdown("- 🚨 FDA Safety Alerts")
+    st.markdown("- 🧪 ClinicalTrials.gov")
 
 # -----------------------------------------------------------------------------
 # TOP HERO BANNER WITH ICONS
