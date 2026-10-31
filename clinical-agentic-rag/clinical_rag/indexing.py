@@ -5,6 +5,7 @@ Handles embedding document chunks, query vector encoding, and indexing them into
 
 import uuid
 from typing import List, Dict, Any
+import streamlit as st
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
@@ -12,17 +13,29 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 from . import config
 
 
+@st.cache_resource
 def get_qdrant_client() -> QdrantClient:
-    """Initializes and returns the Qdrant client connection."""
+    """Initializes and returns the cached Qdrant client connection."""
     if config.QDRANT_URL:
-        return QdrantClient(url=config.QDRANT_URL, api_key=config.QDRANT_API_KEY)
+        return QdrantClient(
+            url=config.QDRANT_URL, 
+            api_key=config.QDRANT_API_KEY, 
+            check_compatibility=False  # Disables strict server version check to avoid timeouts
+        )
     # Default to local persistent/in-memory instance if no URL is provided
     return QdrantClient(path=str(config.ROOT_DIR / "qdrant_db"))
 
 
+@st.cache_resource
+def get_embedding_model() -> SentenceTransformer:
+    """Loads and caches the SentenceTransformer embedding model once in memory."""
+    print(f"Loading embedding model: {config.EMBEDDING_MODEL}...")
+    return SentenceTransformer(config.EMBEDDING_MODEL)
+
+
 def embed_query(query: str) -> List[float]:
-    """Embeds a single query string using the SentenceTransformer model."""
-    model = SentenceTransformer(config.EMBEDDING_MODEL)
+    """Embeds a single query string using the cached SentenceTransformer model."""
+    model = get_embedding_model()
     embedding = model.encode(query, show_progress_bar=False)
     return embedding.tolist()
 
@@ -65,8 +78,7 @@ def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool 
         except Exception:
             existing_count = 0
 
-    print(f"Loading embedding model: {config.EMBEDDING_MODEL}...")
-    model = SentenceTransformer(config.EMBEDDING_MODEL)
+    model = get_embedding_model()
 
     print(f"Indexing {len(chunks)} chunks into Qdrant...")
     batch_size = config.UPLOAD_BATCH_SIZE
