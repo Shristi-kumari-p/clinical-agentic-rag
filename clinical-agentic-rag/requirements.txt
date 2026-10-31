@@ -14,8 +14,12 @@ langchain-core>=0.2.0
 langchain-text-splitters>=0.2.0
 langchain-huggingface>=0.0.3
 
-# Hugging Face Hub (API client)
+# Hugging Face Hub & Local Embeddings
 huggingface_hub>=0.22.0
+sentence-transformers>=2.6.0
+
+# PyTorch (CPU-only build to keep deployment fast and lightweight)
+torch --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Testing
 pytest>=8.0.0
