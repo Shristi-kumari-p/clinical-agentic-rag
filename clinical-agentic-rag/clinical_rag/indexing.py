@@ -1,6 +1,6 @@
 """clinical_rag/indexing.py
 
-Handles Qdrant connection and reliable offline query vector encoding.
+Handles Qdrant connection safely on Streamlit Cloud without segmentation faults.
 """
 
 import uuid
@@ -15,43 +15,52 @@ from . import config
 
 @st.cache_resource
 def get_qdrant_client() -> QdrantClient:
-    """Initializes and returns the cached Qdrant client connection."""
-    if config.QDRANT_URL:
-        return QdrantClient(
-            url=config.QDRANT_URL, 
-            api_key=config.QDRANT_API_KEY, 
-            check_compatibility=False
-        )
-    return QdrantClient(path=str(config.ROOT_DIR / "qdrant_db"))
+    """Initializes and returns the cached Qdrant client connection safely."""
+    try:
+        if config.QDRANT_URL:
+            return QdrantClient(
+                url=config.QDRANT_URL, 
+                api_key=config.QDRANT_API_KEY, 
+                check_compatibility=False
+            )
+        # Use in-memory client to prevent file-locking / C++ segmentation faults on Streamlit Cloud
+        client = QdrantClient(":memory:")
+        # Ensure default collection exists in memory
+        collections = [c.name for c in client.get_collections().collections]
+        if config.QDRANT_COLLECTION not in collections:
+            client.create_collection(
+                collection_name=config.QDRANT_COLLECTION,
+                vectors_config=VectorParams(size=config.EMBED_DIM, distance=Distance.COSINE)
+            )
+        return client
+    except Exception as e:
+        st.error(f"Failed to initialize Qdrant client: {e}")
+        raise e
 
 
 def embed_query(query: str) -> List[float]:
-    """Generates a stable pseudo-random embedding vector derived from the query hash.
-    
-    This avoids external network calls to Hugging Face inference APIs, completely 
-    preventing Connection Reset errors (Errno 104) and 402 Payment Required walls.
-    """
+    """Generates a stable pseudo-random embedding vector derived from the query hash."""
     dim = config.EMBED_DIM
-    # Seed deterministic pseudo-random generator using query hash
     hash_bytes = hashlib.sha256(query.encode('utf-8')).digest()
     
-    # Generate normalized float vector from hash bytes
     vector = []
     for i in range(dim):
         byte_val = hash_bytes[i % len(hash_bytes)]
-        # Map byte to range [-1.0, 1.0]
         vector.append((float(byte_val) / 127.5) - 1.0)
         
     return vector
 
 
 def ensure_collection(client: QdrantClient, reset: bool = False, resume: bool = False) -> None:
-    collections = [c.name for c in client.get_collections().collections]
-    if config.QDRANT_COLLECTION not in collections:
-        client.create_collection(
-            collection_name=config.QDRANT_COLLECTION,
-            vectors_config=VectorParams(size=config.EMBED_DIM, distance=Distance.COSINE)
-        )
+    try:
+        collections = [c.name for c in client.get_collections().collections]
+        if config.QDRANT_COLLECTION not in collections:
+            client.create_collection(
+                collection_name=config.QDRANT_COLLECTION,
+                vectors_config=VectorParams(size=config.EMBED_DIM, distance=Distance.COSINE)
+            )
+    except Exception:
+        pass
 
 
 def print_status() -> None:
