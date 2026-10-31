@@ -26,6 +26,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# -----------------------------------------------------------------------------
+# CACHED RESOURCES TO PREVENT MEMORY SPIKES & CONNECTION RESETS
+# -----------------------------------------------------------------------------
+@st.cache_resource
+def cached_agentic_retrieve(query, top_k):
+    """Cache retrieval execution to prevent redundant heavy computations."""
+    return agentic_retrieve(query, top_k=top_k, verbose=False)
+
+@st.cache_resource
+def cached_generate_answer(query, retrieved_docs):
+    """Cache answer generation step if identical query/context occurs."""
+    return generate_answer(query, retrieved_docs)
+
 # Inject Custom CSS for Banner, Custom Bullets, and UI Polish
 st.markdown("""
 <style>
@@ -69,7 +82,7 @@ st.markdown("""
         margin-bottom: 0.75rem !important;
         line-height: 1.6;
         background: #F8FAFC !important;
-        color: #0F172A !important; /* Force dark text color */
+        color: #0F172A !important;
         border: 1px solid #E2E8F0;
         padding: 0.6rem 1rem 0.6rem 2.4rem !important;
         border-radius: 10px;
@@ -114,7 +127,7 @@ st.markdown("""
     /* 4. RETRIEVED EVIDENCE CARDS & HEADINGS */
     .evidence-card {
         background-color: #FFFFFF !important;
-        color: #0F172A !important; /* Set text color to dark slate */
+        color: #0F172A !important;
         border-left: 4px solid #2563EB;
         padding: 14px 18px;
         border-radius: 8px;
@@ -126,7 +139,7 @@ st.markdown("""
     .evidence-card strong, 
     .evidence-card small, 
     .evidence-card p {
-        color: #0F172A !important; /* Ensure paragraph & inline tags stay dark */
+        color: #0F172A !important;
     }
     .evidence-card code {
         color: #1E40AF !important;
@@ -188,8 +201,8 @@ if prompt := st.chat_input("💬 Ask a medical query (e.g., 'What are side effec
     with st.chat_message("assistant"):
         with st.spinner("🤖 Routing query & searching vector databases..."):
             try:
-                # 1. Retrieve context using agentic retrieval
-                retrieved_docs = agentic_retrieve(prompt, top_k=TOP_K, verbose=False)
+                # 1. Retrieve context using cached agentic retrieval
+                retrieved_docs = cached_agentic_retrieve(prompt, top_k=TOP_K)
                 
                 # 2. Render Source Badges with Icons
                 active_sources = [source for source, docs in retrieved_docs.items() if docs]
@@ -197,10 +210,10 @@ if prompt := st.chat_input("💬 Ask a medical query (e.g., 'What are side effec
                     badges_html = " ".join([render_source_badge(src) for src in active_sources])
                     st.markdown(f"**🔍 Sources Evaluated:** {badges_html}", unsafe_allow_html=True)
 
-                # 3. Generate structured answer
-                response_text = generate_answer(prompt, retrieved_docs)
+                # 3. Generate structured answer via cached helper
+                response_text = cached_generate_answer(prompt, retrieved_docs)
                 
-                # Render LLM output (Custom CSS formats bullets automatically)
+                # Render LLM output
                 st.markdown(response_text)
 
                 # 4. Display Collapsible Raw Evidence Section
