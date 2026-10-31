@@ -1,12 +1,12 @@
 """clinical_rag/indexing.py
 
-Handles query vector encoding via Hugging Face API and connecting to Qdrant Vector Database.
+Handles embedding document chunks, query vector encoding, and indexing them into Qdrant Vector Database.
 """
 
 import uuid
 from typing import List, Dict, Any
-import requests
 import streamlit as st
+from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
@@ -26,28 +26,18 @@ def get_qdrant_client() -> QdrantClient:
     return QdrantClient(path=str(config.ROOT_DIR / "qdrant_db"))
 
 
-def embed_query(query: str) -> List[float]:
-    """Embeds a single query string using Hugging Face Serverless Inference API (Zero local RAM overhead)."""
-    if not config.HF_TOKEN:
-        raise RuntimeError("HF_TOKEN is not set in secrets/environment variables.")
+@st.cache_resource
+def get_embedding_model() -> SentenceTransformer:
+    """Loads and caches the SentenceTransformer embedding model once in memory."""
+    print(f"Loading embedding model: {config.EMBEDDING_MODEL}...")
+    return SentenceTransformer(config.EMBEDDING_MODEL)
 
-    api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{config.EMBEDDING_MODEL}"
-    headers = {"Authorization": f"Bearer {config.HF_TOKEN}"}
-    
-    response = requests.post(
-        api_url, 
-        headers=headers, 
-        json={"inputs": query, "options": {"wait_for_model": True}}
-    )
-    
-    if response.status_code != 200:
-        raise RuntimeError(f"Hugging Face Embedding API failed ({response.status_code}): {response.text}")
-    
-    result = response.json()
-    # Handle nested list response format from feature-extraction pipeline
-    if isinstance(result, list) and len(result) > 0 and isinstance(result[0], list):
-        return result[0]
-    return result
+
+def embed_query(query: str) -> List[float]:
+    """Embeds a single query string using the cached SentenceTransformer model."""
+    model = get_embedding_model()
+    embedding = model.encode(query, show_progress_bar=False)
+    return embedding.tolist()
 
 
 def ensure_collection(client: QdrantClient, reset: bool = False, resume: bool = False) -> None:
@@ -71,16 +61,15 @@ def ensure_collection(client: QdrantClient, reset: bool = False, resume: bool = 
 
 
 def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool = False) -> None:
-    """Embeds document chunks and upserts them into Qdrant in batches (used locally/offline for data ingestion)."""
+    """Embeds document chunks and upserts them into Qdrant in batches."""
     if not chunks:
         print("No chunks provided to index.")
         return
 
-    from sentence_transformers import SentenceTransformer
-
     client = get_qdrant_client()
     ensure_collection(client, reset=reset, resume=resume)
 
+    # Check already indexed point count for resume support
     existing_count = 0
     if resume:
         try:
@@ -89,21 +78,23 @@ def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool 
         except Exception:
             existing_count = 0
 
-    print(f"Loading local embedding model for offline build: {config.EMBEDDING_MODEL}...")
-    model = SentenceTransformer(config.EMBEDDING_MODEL)
+    model = get_embedding_model()
 
     print(f"Indexing {len(chunks)} chunks into Qdrant...")
     batch_size = config.UPLOAD_BATCH_SIZE
 
     for i in range(0, len(chunks), batch_size):
+        # Skip previously processed batches if resuming
         if resume and (i + batch_size <= existing_count):
             continue
 
         batch = chunks[i : i + batch_size]
         texts = [c["text"] for c in batch]
         
+        # Generate embeddings
         embeddings = model.encode(texts, batch_size=config.EMBED_BATCH_SIZE, show_progress_bar=False)
 
+        # Build Qdrant points
         points = []
         for idx, (chunk, embedding) in enumerate(zip(batch, embeddings)):
             point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{chunk['document_id']}_{chunk['chunk_id']}"))
@@ -124,6 +115,7 @@ def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool 
                 )
             )
 
+        # Upsert batch to Qdrant
         client.upsert(
             collection_name=config.QDRANT_COLLECTION,
             points=points
