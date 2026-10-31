@@ -1,5 +1,5 @@
 """Step 4 - agentic routing, vector search and cross-encoder reranking."""
-import streamlit as st
+from functools import lru_cache
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
 from . import config
@@ -46,13 +46,6 @@ def route_query(query: str) -> list[str]:
     return selected or list(config.ALL_SOURCES)
 
 
-@st.cache_resource
-def get_reranker():
-    """Cache the CrossEncoder reranker model using Streamlit to prevent re-loading weights."""
-    from sentence_transformers import CrossEncoder
-    return CrossEncoder(config.RERANKER_MODEL)
-
-
 def retrieve_from_source(query: str, source: str, n_results: int = config.N_CANDIDATES) -> dict:
     """Retrieves candidates filtered by source from Qdrant using query_points API."""
     from .indexing import embed_query, get_qdrant_client
@@ -89,6 +82,13 @@ def retrieve_from_source(query: str, source: str, n_results: int = config.N_CAND
         "metadatas": [[{k: v for k, v in (h.payload or {}).items() if k != "text"} for h in hits]],
         "distances": [[1.0 - float(h.score) for h in hits]],  # Convert Cosine similarity to distance
     }
+
+
+@lru_cache(maxsize=1)
+def get_reranker():
+    from sentence_transformers import CrossEncoder
+
+    return CrossEncoder(config.RERANKER_MODEL)
 
 
 def rerank_results(query: str, results: dict, top_k: int = config.TOP_K) -> list[dict]:
