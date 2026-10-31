@@ -13,7 +13,6 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 from . import config
 
 
-@st.cache_resource
 def get_qdrant_client() -> QdrantClient:
     """Initializes Qdrant Cloud safely by forcing REST (prefer_grpc=False) to prevent port mismatches and socket drops."""
     try:
