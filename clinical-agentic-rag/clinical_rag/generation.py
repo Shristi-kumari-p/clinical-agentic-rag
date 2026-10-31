@@ -1,5 +1,5 @@
 """Step 5 - build the evidence context and generate a grounded answer with the LLM."""
-from functools import lru_cache
+import streamlit as st
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -45,8 +45,9 @@ Generate the final answer using ONLY the retrieved clinical evidence above.
 """
 
 
-@lru_cache(maxsize=1)
+@st.cache_resource
 def get_chat_model():
+    """Cache the Hugging Face endpoint connection securely using Streamlit."""
     from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 
     if not config.HF_TOKEN:
@@ -74,7 +75,7 @@ def build_context(agent_results: dict) -> str:
 ============================================================
 EVIDENCE {len(blocks) + 1}
 ============================================================
-SOURCE       : {source}
+SOURCE     : {source}
 DOCUMENT ID  : {meta.get("document_id", "N/A")}
 CHUNK ID     : {meta.get("chunk_id", "N/A")}
 RERANK SCORE : {result.get("rerank_score", 0.0):.4f}
