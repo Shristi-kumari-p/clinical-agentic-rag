@@ -1,12 +1,12 @@
 """clinical_rag/indexing.py
 
-Handles lightweight local query embedding and Qdrant connection.
+Handles query vector encoding via Hugging Face InferenceClient and connecting to Qdrant Vector Database.
 """
 
 import uuid
 from typing import List, Dict, Any
 import streamlit as st
-from sentence_transformers import SentenceTransformer
+from huggingface_hub import InferenceClient
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
@@ -26,17 +26,31 @@ def get_qdrant_client() -> QdrantClient:
 
 
 @st.cache_resource
-def get_embedding_model() -> SentenceTransformer:
-    """Loads and caches a lightweight SentenceTransformer model once in memory."""
-    print(f"Loading embedding model: {config.EMBEDDING_MODEL}...")
-    return SentenceTransformer(config.EMBEDDING_MODEL)
+def get_hf_client() -> InferenceClient:
+    """Initializes and caches the Hugging Face Inference Client."""
+    if not config.HF_TOKEN:
+        raise RuntimeError("HF_TOKEN is not set in secrets/environment variables.")
+    return InferenceClient(token=config.HF_TOKEN)
 
 
 def embed_query(query: str) -> List[float]:
-    """Embeds a single query string locally using the cached lightweight model (Free, zero billing)."""
-    model = get_embedding_model()
-    embedding = model.encode(query, show_progress_bar=False)
-    return embedding.tolist()
+    """Embeds a single query string using Hugging Face Hub client."""
+    client = get_hf_client()
+    
+    # Use the official feature-extraction client method
+    embedding = client.feature_extraction(
+        query, 
+        model=config.EMBEDDING_MODEL
+    )
+    
+    # Handle numpy array / list formatting returned by the client
+    if hasattr(embedding, "tolist"):
+        embedding = embedding.tolist()
+        
+    if isinstance(embedding, list) and len(embedding) > 0 and isinstance(embedding[0], list):
+        return embedding[0]
+        
+    return embedding
 
 
 def ensure_collection(client: QdrantClient, reset: bool = False, resume: bool = False) -> None:
@@ -58,9 +72,11 @@ def ensure_collection(client: QdrantClient, reset: bool = False, resume: bool = 
 
 
 def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool = False) -> None:
-    """Embeds document chunks and upserts them into Qdrant."""
+    """Embeds document chunks locally for offline ingestion if needed."""
     if not chunks:
         return
+
+    from sentence_transformers import SentenceTransformer
 
     client = get_qdrant_client()
     ensure_collection(client, reset=reset, resume=resume)
@@ -72,7 +88,7 @@ def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool 
         except Exception:
             existing_count = 0
 
-    model = get_embedding_model()
+    model = SentenceTransformer(config.EMBEDDING_MODEL)
     batch_size = config.UPLOAD_BATCH_SIZE
 
     for i in range(0, len(chunks), batch_size):
@@ -95,7 +111,7 @@ def build_index(chunks: List[Dict[str, Any]], reset: bool = False, resume: bool 
             }
             points.append(PointStruct(id=point_id, vector=embedding.tolist(), payload=payload))
 
-        client.upsert(collection_name=config.Qdrant_COLLECTION if hasattr(config, 'Qdrant_COLLECTION') else config.QDRANT_COLLECTION, points=points)
+        client.upsert(collection_name=config.QDRANT_COLLECTION, points=points)
 
 
 def print_status() -> None:
