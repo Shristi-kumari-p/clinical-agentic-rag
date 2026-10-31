@@ -1,4 +1,4 @@
-"""Step 4 - agentic routing, vector search and cross-encoder reranking."""
+"""Step 4 - agentic routing and vector search."""
 import streamlit as st
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
@@ -46,13 +46,6 @@ def route_query(query: str) -> list[str]:
     return selected or list(config.ALL_SOURCES)
 
 
-@st.cache_resource
-def get_reranker():
-    """Cache the CrossEncoder reranker model using Streamlit to prevent re-loading weights."""
-    from sentence_transformers import CrossEncoder
-    return CrossEncoder(config.RERANKER_MODEL)
-
-
 def retrieve_from_source(query: str, source: str, n_results: int = config.N_CANDIDATES) -> dict:
     """Retrieves candidates filtered by source from Qdrant using query_points API."""
     from .indexing import embed_query, get_qdrant_client
@@ -63,7 +56,6 @@ def retrieve_from_source(query: str, source: str, n_results: int = config.N_CAND
     client = get_qdrant_client()
     query_vector = embed_query(query)
 
-    # Filter points in the unified Qdrant collection by source
     source_filter = Filter(
         must=[
             FieldCondition(
@@ -73,7 +65,6 @@ def retrieve_from_source(query: str, source: str, n_results: int = config.N_CAND
         ]
     )
 
-    # Retrieve points using Qdrant's query_points API
     response = client.query_points(
         collection_name=config.QDRANT_COLLECTION,
         query=query_vector,
@@ -83,31 +74,30 @@ def retrieve_from_source(query: str, source: str, n_results: int = config.N_CAND
     )
     hits = response.points
 
-    # Format output to maintain strict backwards compatibility with rerank_results()
     return {
         "documents": [[h.payload.get("text", "") for h in hits]],
         "metadatas": [[{k: v for k, v in (h.payload or {}).items() if k != "text"} for h in hits]],
-        "distances": [[1.0 - float(h.score) for h in hits]],  # Convert Cosine similarity to distance
+        "distances": [[1.0 - float(h.score) for h in hits]],
     }
 
 
 def rerank_results(query: str, results: dict, top_k: int = config.TOP_K) -> list[dict]:
+    """Lightweight relevance ranking using Qdrant vector similarity scores (zero local PyTorch RAM)."""
     documents = results["documents"][0]
     if not documents:
         return []
 
     metadatas = results["metadatas"][0]
     distances = results["distances"][0]
-    scores = get_reranker().predict([[query, d] for d in documents])
 
     ranked = [
         {
             "document": doc,
             "metadata": meta,
             "distance": dist,
-            "rerank_score": float(score),
+            "rerank_score": float(1.0 - dist),  # Use vector similarity score directly
         }
-        for doc, meta, dist, score in zip(documents, metadatas, distances, scores)
+        for doc, meta, dist in zip(documents, metadatas, distances)
     ]
     ranked.sort(key=lambda r: r["rerank_score"], reverse=True)
     return ranked[:top_k]
